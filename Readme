@@ -1,0 +1,5 @@
+This repository holds the sources for the numerical tests of the papers
+
+"Stabilizing Discontinuous Galerkin Methods Using Dafermos' Entropy Rate Criterion"
+
+Part I and II in the corresponding subfolders. Consult also the Readme in the respective subfolders

@@ -3,7 +3,7 @@ using QuadGK
 
 include("bases.jl")
 
-# The C^\infty Friedrichs test function, used for cutting of the viscosity in the cell
+# The C^\infty Friedrichs test function, can be used for cutting of the viscosity in the cell
 function FB(x)
         if abs(x) < 1.0
                 y =  exp(-1/(1-x^2))*exp(1.0)
@@ -15,11 +15,12 @@ end
 
 # Solves the Heat equation using a Galerkin ansatz on the cell
 function SolHESGal(u0ar, tmax)
-        D = inv(Mref)*Sref
-        L = zeros(order+1, order+1)
-        NB = diagm(ones(order+1))
-        Visc = FB
-        for k=1:order+1
+        D = inv(Mref)*Sref			# Differentiates a nodal polynomial
+        L = zeros(order+1, order+1)		# the laplace Gramian
+        NB = diagm(ones(order+1))		# Vectors for the nodal bases of polynomials
+#        Visc = FB
+	Visc(x) = 1.0
+	for k=1:order+1				# Fill the matrix L using numerical quadrature
                 for l=1:order+1
                         du, dv = D*NB[:, k], D*NB[:, l]
                         duf(x) = SCeval(nodes, du, x)
@@ -27,14 +28,16 @@ function SolHESGal(u0ar, tmax)
                         L[k, l], err = quadgk(x->duf(x)*Visc(x)*dvf(x), -1.0, 1.0)
                 end
         end
-        S2 = -inv(Mref)*L
+        S2 = -inv(Mref)*L			# assemble the complete discretisation
         w, v = eigen(-S2)
-        locdt = 0.1/w[end]      # control the timestep using the eigenvalues
+        locdt = 0.1/w[end]      		# control the timestep using the eigenvalues
         disc(u, p, t) = S2*u
         p = 0.0
         prob = ODEProblem(disc, u0ar, tmax, p)
-        sol = solve(prob, SSPRK33(), dt=locdt)
+        sol = solve(prob, SSPRK33(), dt=locdt)	# Solve the ODE
 end
+
+
 
 
 # Function calculates a set of dissipation matrices

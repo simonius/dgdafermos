@@ -1,3 +1,5 @@
+# Tests for the Buckley-Leverett equation
+
 # inclusion of needed packages
 # Solving the ODE systems
 using DifferentialEquations
@@ -18,48 +20,144 @@ include("bases.jl")
 # Dissipation Operators
 include("DispMatGen.jl")
 
-# auxialry definitions for the Euler equations
-include("euler.jl")
+# the continuous flux function
+const abl = 1.0
+f(u) = u.^2.0./(u.^2.0 .+ abl.*(1.0.-u).^2)
+df(u) = 2.0*u.^1.0./(u.^2.0 + (-u .+ 1.0).^2.0) + u.^2.0.*(-2.0*u.^1.0 + 2.0*(-u .+ 1.0).^1.0)./(u.^2.0 + (-u .+ 1.0).^2.0).^2
 
+# The entropy function
+U(u) = (u[1] .- 0.5).^4
+# and the entropy variables
+dU(u) = 4*(u .- 0.5).^3
+# conserved variables from entropy variables
+u(v) = cbrt(v/4.0) + 0.5
 
-# The following function variables allow to change the behavior of the solver
-# Selects the continuous flux function
-f = fEuler
-# Selects its derivative
-df = dfEuler
-# Selects the entropy variables
-dU = dUEuler
-# Selects the entropy functional. PUEuler is the physical entropy for the Euler equations
-Ufunc = PUEuler
-# The corresponding continuous entropy flux function
-F = PFEuler
+# the number of cubature nodes for the entropy flux functions
+Nfq = 30
+# the cubature nodes and weights
+fqg, fqw = gausslobatto(Nfq)
+# rescaling of the nodes and weights to lie in [0.0, 1.0]
+fqg = 0.5*(fqg .+ 1.0)
+fqw = 0.5*fqw
 
+# the numerical entropy flux, integrated using numerical quadrature
+# of the derivative of the entropy flux. 
+function F(u)
+        return u[1]*dot(fqw, df(u[1]*fqg).*dU(u[1]*fqg))
+end
 
+# number of conserved variables
+ncons = 1
 
+# the initial Riemann data
+u1f(x) = [x < 1.0 ? 1.0 : 0.0]
 
-# Below are the choices for intercell entropy flux functions and entropy inequality predictor. 
-# Please note that all of these choices should be compatible - If a HLL flux was selected should the
-# entropy flux and the entropy inequality predictor be also HLL based.
+# calculation of the speed estimate for all HLL type 
+# estimates a splitting into the increasing and decreasing parts of f(u) is used.
+# eps is used to mitigate division by zero in case the left and right speed coincide
+function HLLfopnorm(ul, ur)
+        minv = min(ul[1], ur[1])
+        maxv = max(ul[1], ur[1])
+        al, ar = 0.0, 0.0
+        eps = 1.0E-6
+        if maxv < 0.5   # df is monotone increasing
+                al = df(minv) - eps
+                ar = df(maxv) + eps
+        elseif minv > 0.5 # df is monotone decreasing
+                al = df(maxv) - eps
+                ar = df(minv) + eps
+        else    # df has a maximum at 0.5
+                ar = df(0.5) + eps
+                al = min(df(minv), df(maxv)) - eps
+        end
+        return al, ar
+end
 
-# Selects the numerical intercell flux function. Possible choices are: hEulerHLL, hEulerLLF
-flux = hEulerHLL
-# Selects the numerical intercell entropy flux function. Possible: HEulerHLL, HEulerLLF
-Flux = HEulerHLL
-# Selects the Dissipation estimate. Possible: LLFDispOp, HLLDispOp
+# A estimate for local LF type fluxes
+function LLFfopnorm(ul, ur)
+	c = max(abs(df(ul)[1]), abs(df(ur)[1]))
+	return c
+end
+
+# the HLL flux for the BL equations
+function hBLHLL(ul, ur)
+	al, ar = HLLfopnorm(ul, ur)
+	if (0 < al)
+                return f(ul)
+        elseif (0 < ar)
+		return (al*ar*(ur-ul) + ar*f(ul) - al*f(ur)) / (ar-al)
+        else
+		return f(ur)
+        end
+end
+
+# the HLL numerical entropy flux for the BL equations
+function HBLHLL(ul, ur)
+	al, ar = HLLfopnorm(ul, ur)
+	
+	um = um = (ar*ur - al*ul)/(ar-al) + (f(ul) - f(ur))/(ar-al)
+        if (0 < al)
+		flb = al*U(ul) + (ar - al) * U(um) - ar*U(ur) + F(ur)
+                fub = F(ul)
+                Hhll = fub
+	elseif (0 < ar)
+		flb = ar*U(um) - ar*U(ur) + F(ur)
+                fub = al*U(um) - al*U(ul) + F(ul)
+		Hhll = 0.5*(flb + fub)
+	else
+		flb = F(ur)
+                fub = F(ul) - (ar - al)*U(um)+ ar*U(ur) - al*U(ul)
+                Hhll = flb
+	end
+	return Hhll
+end
+
+# a HLL based entropy dissipation estimate for the BL equation
+function HLLDispOp(ul, ur)
+	al, ar = HLLfopnorm(ul, ur)
+        
+	um = (ar*ur - al*ul)/(ar-al) + (f(ul) - f(ur))/(ar-al)
+        lUd = (ar - al)*U(um) + al*U(ul) - ar*U(ur) - (F(ul) - F(ur))
+        # We do not know in which cell the dissipation takes place
+	return lUd
+end
+
+# A local Lax-Friedrichs flux for the Buckley-Leverett equations
+function hBLLLF(ul, ur)
+	c = LLFfopnorm(ul, ur)
+	return 0.5*(f(ul) + f(ur) + c*(ul - ur))
+end
+
+# A local Lax-Friedrichs entropy flux for the BL equations
+function HBLLLF(ul, ur)
+	c = LLFfopnorm(ul, ur)
+	return 0.5*(F(ul) + F(ur) + c*(U(ul) - U(ur)))
+end
+
+# A LLF based entropy dissipation estimate for the BL equations
+function LLFDispOp(ul, ur)
+	c = LLFfopnorm(ul, ur)
+	um = 0.5*(ul + ur) + (f(ul) - f(ur))/(2*c)
+        return c*(2*U(um) - U(ul) - U(ur)) - F(ul) + F(ur)
+end
+
+# Selection of the numerical flux. Possible are hBLHLL and hBLLLF
+flux = hBLHLL
+# Selection of numerical entropy flux. Possible are hBLHLL and hBLLLF
+Flux = HBLHLL
+# Selection of the entropy inequality predictor - HLLDispOp or LLFDispOp
 dispOp = HLLDispOp
 
-
-# The right and left bounds of the simulation domain
-xr = 10.0
+# Right and left end of the domain
+xr = 2.0
 xl = 0.0
 
 # the used polynomial order
-order =  7
+order = 7
 
 # collocation nodes for the DG method
 nodes, weights = gausslobatto(order+1)
 x = nodes
-
 
 # Matrix evaluates a Ansatz in the modal basis at the nodes
 Pm = PaMat(x)
@@ -69,17 +167,14 @@ Mm = Mat(Me, order+1)
 Sm = Mat(Se, order+1)
 # Matix transforms from nodal presentation to modal representation
 Om = inv(Pm)
-
 # Calculation of the nodal representation of all needed matrices
 Mref = transpose(Om)*Mm*Om
 Sref = transpose(Om)*Sm*Om
 weights = ones(1, order + 1)*Mref
 
-# Calculation of the Dissipation operator for the quadrature in the variable weights
 G = DispMats(x, weights)
 
 # Matrices for projection onto a lower order solution
-# this is only used in the entropy inequality predictor
 ToLOset = Array{Any}(undef, order)
 for ord = 2:order
         nLO, wLO = gausslobatto(ord)
@@ -88,24 +183,24 @@ for ord = 2:order
         ToLOset[ord] = ToLO
 end
 
-
-# L2 Projection of the function uf on the ansatzspace
-# This function is used to discretise the initial condition
+# Projects the function uf onto the Legendre basis 
+# used to project the initial condition
 function L2Proj(uf, Nmax)
-	c = zeros(Nmax)
-	for k=1:Nmax
-		integ(x) = uf(x)*Pleg(k-1, x)
-		int, err = quadgk(integ, -1.0, 1.0, maxevals=1000)
-		c[k] = (2*k-1)*int*0.5
-	end
-	return c
+        c = zeros(Nmax)
+        for k=1:Nmax
+                integ(x) = uf(x)*Pleg(k-1, x)
+                int, err = quadgk(integ, -1.0, 1.0, maxevals=100)
+                c[k] = (2*k-1)*int*0.5
+        end
+        return c
 end
 
+
 # DG discretisation of the
-# Euler equations
-# u is the N x K x L tensor of conserved variables,
-# for N cells, K nodes and L conserved variables
-function EulerDG!(du, u, p, t)
+# Buckley-Leverett equation
+# u is the N x K x 1 tensor of conserved variables,
+# for N cells, K nodes and 1 conserved variable
+function BLDG!(du, u, p, t)
         dx = p[1]
         dt = p[2]
         Mi = p[3]
@@ -133,11 +228,9 @@ function EulerDG!(du, u, p, t)
         end
 end
 
-
-
 # A maximal dissipation estimate, hardened using the projection onto lower order
 # polynomials in the case order > 2.
-# Per Edge, i.e. dE refers to the dissipation taking place at the cell boundary k+1/2
+# Per Edge, i.e. dE refers to the dissipation taking place at the cell boundary k+1
 function DispEstPE(u)
         N, K, L = size(u)
         dE = zeros(N)
@@ -155,32 +248,29 @@ function DispEstPE(u)
                         uLOl = ToLOset[ord]*u[n, :, :]
                         uLOr = ToLOset[ord]*u[mod1(n+1, N), :, :]
                         dEloc = dispOp(uLOl[end, :], uLOr[1, :])
-                        dE[n] = min(dE[n], dEloc)
+                	dE[n] = min(dE[n], dEloc)
                 end
         end
         return dE
 end
 
-# A function returning the total entropy for cell Z.
-# u: a K x L array of the K nodal values of all L conserved quantities in the Cell.
-# p: the parameter vector.
+# The total entropy functional for a single cell
 function Efunc(u, par)
         dx = par[1]
         K, L = size(u)
         Uv = zeros(K)
         for k=1:K
-                Uv[k] = PUEuler(u[k, :])
+                Uv[k] = U(u[k, :])
         end
         return dx*0.5*dot(weights, Uv)
 end
 
-
-# A DG discretisation of the Euler equations, corrected in entropy by a maximal
+# A DG discretisation of the Buckley-Leverett equation, corrected in entropy by a maximal
 # entropy rate estimate per cell edge.
-function EulerDGDpe!(du, u, par, t)
+function BLDGDpe!(du, u, par, t)
         N, K, L = size(u)
         dx, dt = par[1], par[2]
-        EulerDG!(du, u, par, t)
+        BLDG!(du, u, par, t)
 
         dEPE = DispEstPE(u)
         dEDG = zeros(N)
@@ -198,7 +288,7 @@ function EulerDGDpe!(du, u, par, t)
                         dUdtdd[k] = dot(dU(u[n, k, :]), dd[n, k, :])
                 end
                 dEDG[n] = dot(weights*dx/2.0, dUdtDG)
-                dEdd[n] = Efunc(u[n, :, :] + dd[n, :, :], par) - Efunc(u[n, :, :], par)
+                dEdd[n] = Efunc(u[n, :, :] + G*u[n, :, :], par) - Efunc(u[n, :, :], par)
                 dEDG[n] = dEDG[n] - (Flux(u[mod1(n-1, N), K, :], u[n, 1, :]) - Flux(u[n, K, :], u[mod1(n+1, N), 1, :]))
 
                 if dEdd[n] > leps
@@ -207,9 +297,9 @@ function EulerDGDpe!(du, u, par, t)
                 # the needed alpha for entropy stability
                 alpES = max(0.0, -dEDG[n]*dEdd[n]/(dEdd[n]^2 + leps^2))
                 alp[n] = alp[n] + alpES
-                # update the entropy error of the scheme - now it will be non-positive. 
+                # update the entropy error of the scheme - now it will be non-positive.
                 dEDG[n] = dEDG[n] + alpES*dEdd[n]
- 		# splitting of the dissipation per edge.
+                # splitting of the dissipation per edge.
                 dEDGl = dEDG[n]*(dEPE[mod1(n-1, N)]/(dEPE[mod1(n-1, N)] + dEPE[n] - leps))
                 dEDGr = dEDG[n]*(dEPE[n]/(dEPE[mod1(n-1, N)] + dEPE[n] - leps))
                 dEDGpe[n] = dEDGpe[n] + dEDGr
@@ -218,14 +308,14 @@ function EulerDGDpe!(du, u, par, t)
         for n=1:N
                 # the per unit correction Entropy rate at the edge
                 dEeg = dEdd[n] + dEdd[mod1(n+1, N)]
-                st = dEPE[n] - dEDGpe[n]
+                st = dEPE[n] - 1.0*dEDGpe[n]
                 alpER = max(0.0, st*dEeg/(dEeg^2 + leps^2))
                 alp[n] = alp[n] + alpER
                 alp[mod1(n+1, N)] = alp[mod1(n+1, N)] + alpER
         end
-	maxval = 1.0/dt
+        maxval = 1.0/dt
         for n=1:N
-		du[n, :, :] = du[n, :, :] + min(maxval, alp[n])*dd[n, :, :]
+                du[n, :, :] = du[n, :, :] + min(maxval, 1.0*alp[n])*dd[n, :, :]
         end
 
         if par[end] == :false
@@ -233,18 +323,15 @@ function EulerDGDpe!(du, u, par, t)
                 du[1, :, :] .= 0.0
                 alp[1], alp[end] = 0.0, 0.0
         end
-        return alp, dEDG, dEPE, dEDGpe
+        return alp, dEDG, dEPE, dEdd
 end
-
-
-
 
 # Driver routine for numerical tests using the semidiscrete version
 # of the Dafermos Entropy rate criterion stabilized DG method
 # K is the number of Cells, T the maximum running time, u0 the
-# initial condition, periodic switches on periodic BCs, 
+# initial condition, periodic switches on periodic BCs,
 # hot activates a High-Order time integration method for convergence tests.
-function NTDGD(solver, K,T, u0; cfl = 0.02, periodic=:false, hot=:false)
+function NTDGD(solver, K,T, u0; cfl = 0.02, periodic=:true, hot=:false)
         # initialization of auxillary variables
         tspan = (0, T)
         dx = (xr-xl)/(K)
@@ -255,11 +342,12 @@ function NTDGD(solver, K,T, u0; cfl = 0.02, periodic=:false, hot=:false)
         uar = zeros(K, order+1, ncons)
         # especially the grid and initial condition
         for n=1:K
-		for l=1:3
-			c = L2Proj(x->u0(grid[n] + dx/2*x)[l], order+1)
-			uar[n, :, l] = Pm*c
-		end
+                for l=1:ncons
+                        c = L2Proj(x->u0(grid[n] + dx/2*x)[l], order+1)
+                        uar[n, :, l] = Pm*c
+                end
                 for k=1:order+1
+                   #     uar[n, k, :] = u0(grid[n]+ dx/2*x[k])
                         gridar[n, k] = grid[n] + dx/2*x[k]
                 end
         end
@@ -285,7 +373,7 @@ end
 # the title in the legend is name, the solution can be overlayed onto a
 # previus one if overlay is specified. Linestyle and some space around, as bd, can be specified
 # the second version of the function is needed to provide animations
-function PlotSol(g, sol, t, comp; name = "solution", overlay = false, ls = :solid, bd = 0.3, yl = "u(x, t)")
+function PlotSol(g, sol, t, comp; name = "solution", overlay = false, ls = :solid, bd = 0.4, yl = "u(x, t)")
         N, K, L= size(sol(0.0)[:, :, :])
         upper = bd + maximum(sol(0.0)[:, :, comp])
         lower = minimum(sol(0.0)[:, :, comp]) - bd

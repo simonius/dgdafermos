@@ -57,6 +57,7 @@ for i=1:tsteps
 		dEmat[n, i] = dEdt - (Flux(uDG[mod1(n-1, N), K, :], uDG[n, 1, :]) - Flux(uDG[n, K, :], uDG[mod1(n+1, N), 1, :]))
 	end
 	Etot[i] = sum(Emat[:, i]) + tar[i]*F(uDG[1, 1, :]) - tar[i]*F(uDG[end, end, :])
+	GC.gc()
 end
 
 # array of time instants, as a reference for plots
@@ -88,6 +89,7 @@ for i=1:tsteps
 		EtotLF[i] = EtotLF[i]+ Ufunc(solLF[lfti, n, :])*dxLF
 	end
 	EtotLF[i] = EtotLF[i] + tar[i]*F(solLF[lfti, 1, :]) - tar[i]*F(solLF[lfti, end, :])
+	GC.gc()
 end
 
 
@@ -99,4 +101,4 @@ axislegend(position=:lb)
 save("figures/totentroana"*string(order)*".pdf", fig)
 
 GLMakie.activate!()
-
+GC.gc()

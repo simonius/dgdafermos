@@ -93,7 +93,8 @@ function Plag(xar, k, x)
         return v
 end
 
-# calcualtes the Value of $u$ at $x$
+# calcualtes the value of $u$ at $x$
+# given a vector of nodal coefficients $uT$
 function SCeval(xar, uT, x)
         v = 0.0
         K = length(xar)
@@ -103,4 +104,13 @@ function SCeval(xar, uT, x)
         return v
 end
 
-
+# calculates the value of $u$ at $x$
+# given a vector of Legendre modal coefficients c
+function CellEval(c, x)
+	N = length(c)
+	s = 0.0
+	for n=1:N
+		s = s + c[n]*Pleg(n-1, x)
+	end
+	return s
+end

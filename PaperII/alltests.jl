@@ -1,3 +1,4 @@
+# This script carries out all implemented tests for the Euler equations
 include("eulerdg.jl")
 
 # convergence analysis for the semi-discrete scheme

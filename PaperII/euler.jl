@@ -1,19 +1,34 @@
-# File contains the Flux funcitons and Riemann solvers for the 1D Euler equations
+# File contains the Flux funcitons and approximate Riemann solvers for the 1D Euler equations
 # u = (rho, rho u, E)
 
-gamma = 1.4
-ncons = 3
+# the adiabatic exponent
+const gamma = 1.4
+# the number of conserved variables
+const ncons = 3
 
+# calculates the pressure from the conserved variables
 function p(u)
 	p = (gamma-1)*(u[3]-0.5*u[2]^2/u[1])
 	return max(p, 1.0E-30)
 end
 
+# calculates the speed of sound
 function a(u, p)
 	a = sqrt(abs(gamma*p / u[1]))
         return a
 end
 
+# short form.
+a(u) = a(u, p(u))
+
+# The numerical speed of sound. Used instead of the exact sound speed in computations of al and ar
+# to reduce the sonic point glitch, see also Tang: On the sonic point glitch
+function anum(u, p)
+        a = sqrt(abs(3*p / u[1]))
+        return a
+end
+
+# the continuous Euler flux function
 function fEuler(u, p)
         fEuler = zeros(3)
         fEuler[1] = u[2]
@@ -22,6 +37,7 @@ function fEuler(u, p)
         return fEuler
 end
 
+# The derivative of the Euler flux function with respect to $u$
 function dfEuler(u)
 	dfEuler = zeros(3, 3)
 	dfEuler[1, :] = [0, 1, 0]
@@ -32,13 +48,17 @@ function dfEuler(u)
 	return dfEuler
 end
 
+# short form for fEuler(u, p)
 function fEuler(u)
         return fEuler(u, p(u))
 end
 
-fopnorm(ul, ur) = max(abs(ul[2]/ul[1] - a(ul, p(ul))), abs(ur[2]/ur[1] + a(ur, p(ur))))
+
+fopnorm(ul, ur) = max(abs(ul[2]/ul[1]), abs(ur[2]/ur[1])) + max(anum(ul, p(ul)), anum(ur, p(ur)))
+fsb(ul, ur) = (min(ul[2] / ul[1], ur[2] / ur[1]) - max(anum(ul, p(ul)), anum(ur, p(ur))), max(ul[2] / ul[1], ur[2] / ur[1]) + max(anum(ul, p(ul)), anum(ur, p(ur))))
 
 
+# Lax-Friedrichs flux for the Euler equations
 function hEulerLF(ul, ur, mu)
         hEulerLF = zeros(3)
         pl = p(ul)
@@ -47,7 +67,7 @@ function hEulerLF(ul, ur, mu)
         return hEulerLF
 end
 
-
+# Entropy variables (derivative of the entropy functional) for the Euler equations
 function eulerEvar(cu)
         rho = cu[1]
         u = cu[2]/cu[1]
@@ -61,21 +81,22 @@ function eulerEvar(cu)
 end
 
 
-
+# Local Lax-Friedrichs flux for the Euler equations
 @inline function hEulerLLF(ul, ur)
         pl = p(ul)
         pr = p(ur)
-        amax = max(a(ul, pl), a(ur, pr))
-	lambound=  1.0*(max(abs(ul[2]/ul[1]), abs(ur[2]/ur[1])) + amax)
-        return hEulerLF(ul, ur, lambound)
+        amax = max(anum(ul, pl), anum(ur, pr))
+	lambound = fopnorm(ul, ur)
+	return hEulerLF(ul, ur, lambound)
 end
 
+# Local Lax-Friedrichs entropy flux for the Euler equations
 @inline function HEulerLLF(ul, ur)
         pl = p(ul)
         pr = p(ur)
-        amax = max(a(ul, pl), a(ur, pr))
-	lambound=  1.0*(max(abs(ul[2]/ul[1]), abs(ur[2]/ur[1])) + amax)
-        return HEulerLF(ul, ur, lambound)
+        amax = max(anum(ul, pl), anum(ur, pr))
+	lambound = fopnorm(ul, ur)
+	return HEulerLF(ul, ur, lambound)
 end
 
 
@@ -85,6 +106,7 @@ function PUEuler(u)
         return -u[1]*S
 end
 
+# The entropy flux for the physical entropy and the Euler equations
 function PFEuler(u)
         S = log(p(u)*abs(u[1])^(-gamma))
         return -u[2]*S
@@ -101,19 +123,96 @@ function dUEuler(u)
 	return v
 end
 
-
+# The entropy flux for the Lax Friedrichs flux
 function HEulerLF(ul, ur, mu)
         return 0.5*(PFEuler(ul) + PFEuler(ur) - (PUEuler(ur) - PUEuler(ul))*mu)
 end
 
+# The HLL numerical flux for the Euler equations of gas dynamics
+function hEulerHLL(ul, ur)
+        hEulerHLL = zeros(3)
+        pl = p(ul)
+        pr = p(ur)
+        amax = max(anum(ul, pl), anum(ur, pr))
+        vl = ul[2]/ul[1]
+        vr = ur[2]/ur[1]
+        vmin = min(vl, vr)
+        vmax = max(vl, vr)
+        al = vmin-amax
+        ar = vmax+amax
 
+        if (0 < al)
+                hEulerHLL = fEuler(ul,pl)
+        elseif (0 < ar)
+                hEulerHLL = (al*ar*(ur-ul) + ar*fEuler(ul, pl) - al*fEuler(ur, pr)) / (ar-al)
+        else
+                hEulerHLL = fEuler(ur, pr)
+        end
+        return hEulerHLL
+end
+
+# The HLL numerical entropy flux for the Euler equations of gas dynamics
+function HEulerHLL(ul, ur)
+        HEulerHLL = zeros(3)
+        pl = p(ul)
+        pr = p(ur)
+        amax = max(anum(ul, pl), anum(ur, pr))
+        vl = ul[2]/ul[1]
+        vr = ur[2]/ur[1]
+        vmin = min(vl, vr)
+        vmax = max(vl, vr)
+        al = vmin-amax
+        ar = vmax+amax
+        um = um = (ar*ur - al*ul)/(ar-al) + (fEuler(ul) - fEuler(ur))/(ar-al)
+
+        if (0 < al)
+                flb = al*PUEuler(ul) + (ar - al) * PUEuler(um) - ar*PUEuler(ur) + PFEuler(ur)
+                fub = PFEuler(ul)
+                HEulerHLL = fub
+        elseif (0 < ar)
+                flb = ar*PUEuler(um) - ar*PUEuler(ur) + PFEuler(ur)
+                fub = al*PUEuler(um) - al*PUEuler(ul) + PFEuler(ul)
+         #       HEulerHLL = -al/(ar - al)*flb + ar/(ar - al)*fub
+                HEulerHLL = 0.5*(flb + fub)
+        else
+                flb = PFEuler(ur)
+                fub = PFEuler(ul) - (ar - al)*PUEuler(um)+ ar*PUEuler(ur) - al*PUEuler(ul)
+                HEulerHLL = flb
+        end
+        return HEulerHLL
+end
+
+# The Dissipation Prediction of a local Lax-Friedrichs style entropy inequality predictor,
+# i.e. the HLL predictor from the publication with the trivial speed estimate -a_l = c = a_r
+function LLFDispOp(ul, ur)
+        pl, pr = p(ul), p(ur)
+        amax = max(anum(ul, pl), anum(ur, pr))
+        cbound = fopnorm(ul, ur)
+        um = 0.5*(ul + ur) + (fEuler(ul) - fEuler(ur))/(2*cbound)
+        return cbound*(2*Ufunc(um) - Ufunc(ul) - Ufunc(ur)) - F(ul) + F(ur)
+end
+
+# The Dissipation prediction of a HLL style entropy inequality predictor.
+function HLLDispOp(ul, ur)
+        pl, pr = p(ul), p(ur)
+        amax = max(anum(ul, pl), anum(ur, pr))
+        ar = max(ul[2]/ul[1], ur[2]/ur[1]) + amax
+        al = min(ul[2]/ul[1], ur[2]/ur[1]) - amax
+        um = (ar*ur - al*ul)/(ar-al) + (fEuler(ul) - fEuler(ur))/(ar-al)
+        lUd = (ar - al)*Ufunc(um) + al*Ufunc(ul) - ar*Ufunc(ur) - (F(ul) - F(ur))
+
+        # We do not know in which cell the dissipation takes place
+        return lUd
+end
+
+# Returns the conserved variables given the physical variables density, speed and pressure
 function cons_var(rho, v, p)
     E = p / (gamma-1) + 0.5*v^2*rho
     rhov = rho*v
     return [rho, rhov, E]
 end
 
-
+# Initial conditions
 function shuosh6(x)
         eps = 0.2
         
@@ -127,7 +226,6 @@ function shuosh6(x)
 end
 
 function shuosh6a(x)
-        
         if x < 5.0
                 u0 = cons_var(1.0, 0.0, 1.0)
         else
@@ -171,6 +269,46 @@ function toro123(x)
         return u0
 end
 
+
+function toro1(x)     
+        if x < 3.0
+                u0 = cons_var(1.0, 0.75, 1.0)
+        else
+                u0 = cons_var(0.125, 0.0, 0.10)
+        end
+
+        return u0
+end
+
+function toro3(x)
+        if x < 5.0
+                u0 = cons_var(1.0, 0.0, 1000.0)
+        else
+                u0 = cons_var(1.0, 0.0, 0.01)
+        end
+
+        return u0
+end
+
+function toro4(x)
+        if x < 4.0
+                u0 = cons_var(5.99924, 19.5975, 460.894)
+        else
+                u0 = cons_var(5.99242, -6.19633, 46.0950)
+        end
+
+        return u0
+end
+
+function toro5(x)
+        if x < 8.0
+                u0 = cons_var(1.0, -19.59745, 1000.0)
+        else
+                u0 = cons_var(1.0, -19.59745, 0.01)
+        end
+
+        return u0
+end
 
 
 function smootheuler(x)

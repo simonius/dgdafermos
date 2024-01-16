@@ -54,7 +54,9 @@ function SolEval(grid, sol, x)
         return solval
 end
 
+# the initial condition is a smooth density variation
 uinit = smootheuler
+# that is advected to the right
 refsol(x, t) = uinit(mod(x - 2.0*t, 10.0))
 
 
@@ -66,11 +68,9 @@ tend = 5.0
 
 # Used amount of cells.
 if order < 6
-	#Narr = [10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100]
 	Narr = collect(10:5:100)
 else
 	Narr = collect(4:2:28)
-	#Narr = [10, 15, 20, 25, 30, 40, 50]
 end
 
 # Used CFL number for the calculation with the lowest number
@@ -82,6 +82,9 @@ cflp = 0.02*Narr[1]
 errarr = zeros(length(Narr))
 errarr2 = zeros(length(Narr))
 errarrinf = zeros(length(Narr))
+errarrUS = zeros(length(Narr))
+errarr2US = zeros(length(Narr))
+
 
 # random points to evaluate the solution Nmc times for the Monte Carlo quadrature of the error
 rps = rand(Nmc).*2.0
@@ -90,39 +93,44 @@ rps = rand(Nmc).*2.0
 for k=1:length(Narr)
         println("Solving for k = ", k)
 	grid, sol = NTDGD(EulerDGDpe!, Narr[k], tend, uinit, cfl=0.1/(order^2+1), periodic=:true, hot=:true)
+	gridus, solus = NTDGD(EulerDG!, Narr[k], tend, uinit, cfl=0.1/(order^2 +1), periodic=:true, hot=:true)
 	# Calculation of the error using MC integration
 	for i = 1:Nmc
                 errarr[k] = errarr[k] + sum(abs.(SolEval(grid, sol(tend), rps[i]) - refsol(rps[i], tend)))
                 errarr2[k] = errarr2[k] + sum((SolEval(grid, sol(tend), rps[i]) - refsol(rps[i], tend)).^2)
+		# for reference purposes: the unmodified solver
+		errarrUS[k] = errarrUS[k] + sum(abs.(SolEval(gridus, solus(tend), rps[i]) - refsol(rps[i], tend)))
+                errarr2US[k] = errarr2US[k] + sum((SolEval(gridus, solus(tend), rps[i]) - refsol(rps[i], tend)).^2)
 	end
 	errarr[k] = errarr[k] / Nmc
 	errarr2[k] =sqrt(errarr2[k] / Nmc)
+	errarrUS[k] = errarrUS[k] / Nmc
+        errarr2US[k] =sqrt(errarr2US[k] / Nmc)
+	GC.gc()
 end
 
 # Set increased font size for readability
-fontsize_theme = Theme(fontsize = 28, colormap=:grayC)
+fontsize_theme = Theme(fontsize = 24, colormap=:grayC)
 set_theme!(fontsize_theme)
 # set axis labels
 axis = (xlabel = "Cells", ylabel = "Error", yscale=log10, xscale=log2)
 CairoMakie.activate!()
 
 # plot error
-fig = scatter(Narr, errarr, axis = axis, color=:black)
-
+fig = scatter(Narr, errarr, axis = axis, color=:black, label="DDG")
+scatter!(Narr, errarrUS, color=:black, label="DG", marker=:cross)
 # and lines with corresponding orders
-#if order < 6
-lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])], label = "order 1", color=:black, linestyle=:dot)
-lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^2], label = "order 2", color=:black, linestyle=:dashdot)
-lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^3], label = "order 3", color=:black, linestyle=:dash)
-lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^4], label = "order 4", color=:black)
-lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^5], label = "order 5", color=:black, linestyle=:dot)
-lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^6], label = "order 6", color=:black, linestyle=:dashdot)
-lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^7], label = "order 7", color=:black, linestyle=:dash)
-#end
+lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])], label = "order 1, 5", color=:black, linestyle=:dot)
+lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^2], label = "order 2, 6", color=:black, linestyle=:dashdot)
+lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^3], label = "order 3, 7", color=:black, linestyle=:dash)
+lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^4], label = "order 4, 8", color=:black)
+lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^5], color=:black, linestyle=:dot)
+lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^6], color=:black, linestyle=:dashdot)
+lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^7], color=:black, linestyle=:dash)
 
-lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^8], label = "order 8", color=:black)
-#if order > 5
-	lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^9], label = "order 9", color=:black, linestyle=:dot)
+
+lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^8], color=:black)
+lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^9], color=:black, linestyle=:dot)
 if order > 7
 	lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^10], label = "order 10", color=:black, linestyle=:dashdot)
 	lines!([Narr[1], Narr[end]], [errarr[1], errarr[1]*(Narr[1]/Narr[end])^11], label = "order 11", color=:black, linestyle=:dash)
@@ -136,20 +144,21 @@ end
 axislegend(position=:lb)
 save("figures/convana1p"*string(order)*"t"*string(tend)*".pdf", fig)
 
-fig = scatter(Narr, errarr2, axis=axis, color=:black)
-#if order < 6
-	lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])], label = "order 1", color=:black, linestyle=:dot)
-lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^2], label = "order 2", color=:black, linestyle=:dashdot)
-lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^3], label = "order 3", color=:black, linestyle=:dash)
-lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^4], label = "order 4", color=:black)
-lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^5], label = "order 5", color=:black, linestyle=:dot)
-lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^6], label = "order 6", color=:black, linestyle=:dashdot)
-lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^7], label = "order 7", color=:black, linestyle=:dash)
+fig = scatter(Narr, errarr2, axis=axis, color=:black, label="DDG")
+scatter!(Narr, errarr2US, color=:black, label= "DG", marker=:cross)
+
+lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])], label = "order 1, 5", color=:black, linestyle=:dot)
+lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^2], label = "order 2, 6", color=:black, linestyle=:dashdot)
+lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^3], label = "order 3, 7", color=:black, linestyle=:dash)
+lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^4], label = "order 4, 8", color=:black)
+lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^5], color=:black, linestyle=:dot)
+lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^6], color=:black, linestyle=:dashdot)
+lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^7], color=:black, linestyle=:dash)
 
 
-lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^8], label = "order 8", color=:black)
+lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^8], color=:black)
 
-	lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^9], label = "order 9", color=:black, linestyle=:dot)
+	lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^9], color=:black, linestyle=:dot)
 if order > 7
 	lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^10], label = "order 10", color=:black, linestyle=:dashdot)
 	lines!([Narr[1], Narr[end]], [errarr2[1], errarr2[1]*(Narr[1]/Narr[end])^11], label = "order 11", color=:black, linestyle=:dash)
@@ -160,4 +169,4 @@ end
 axislegend(position=:lb)
 save("figures/convana2p"*string(order)*"t"*string(tend)*".pdf", fig)
 
-
+GC.gc()

@@ -1,3 +1,6 @@
+# This file impements (modified) Lax-Friedrichs solvers to calculate reference solutions
+# for the Euler test-cases where no closed form is available - namely the Shu-Osher sine interaction prolem
+
 using DifferentialEquations
 
 include("euler.jl")
@@ -40,17 +43,27 @@ function EulerLF(u0f, tmax, N, cbound)
 end
 
 # Same as before, but only saves final value
-function EulerLFlu(u0f, tmax, N, cbound)
+function EulerLFlu(u0f, tmax, N, cfl=0.5)
         fa = zeros(N, 3)
         dx = (xr - xl) / N
-        dt = dx/cbound
+
+	cbound = 0.0
+	u = zeros(N, 3)
+	Threads.@threads for k=1:N
+                u[k, :] = u0f(xl + (k-0.5)*dx)
+	end
+	for k=1:N
+		ul = u[k, :]
+		ur = u[mod1(k+1, N), :]
+		cbound = max(cbound, fopnorm(ul, ur))
+        end
+
+
+        dt = cfl*dx/cbound
         lamh = 0.5*dt/dx
 	K = ceil(Int, tmax/(2*dt))
-        u = zeros(N, 3)
 	u2 = zeros(N, 3)
-        Threads.@threads for k=1:N
-                u[k, :] = u0f(xl + (k-0.5)*dx)
-        end
+        
 
         for k=1:K
 		# u->u2
@@ -75,12 +88,14 @@ function EulerLFlu(u0f, tmax, N, cbound)
 end
 
 
-function CalcRefNPFV(solver;u0f = shuosh6, tmax=1.8, N=100, CFL=1.0, cbound = 3.0)
+function CalcRefNPFV(solver;u0f = shuosh6, tmax=1.8, N=100, CFL=1.0, cbound=3.0)
 	dx = (xr - xl)/N
 	u0ar = zeros(N, 3)
+	cbound = 0.0
 	for k=1:N
 		u0ar[k, :] = u0f(xl + (k-0.5)*dx)
 	end
+	
         p = zeros(2)
         p[1] = dx
         locdt = CFL*p[1]/cbound

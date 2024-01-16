@@ -1,0 +1,114 @@
+This folder contains the sources for all testcases of "Stabilizing Discontinuous Galerkin Methods II: Systems of Conservation Laws".
+They were written in Julia and tested to work on Julia 1.9. The needed packages are:
+        - FastGaussQuadrature
+        - QuadGK
+        - DifferentialEquations
+        - Plots
+        - Makie
+        - CairoMakie
+        - GLMakie
+        - LaTeXStrings
+
+
+The file
+        inpkg.jl
+
+installs all needed packages. The tests produce pdf images in a folder figures/.
+Tests for Burgers' equation, the Buckley-Leverett equation and the Euler equations of gas dynamics were implemented.
+Each of these can be run by including one of the following julia scripts into a running julia interpreter:
+        mkburgers.jl 	(Burgers' equation),
+        mkBLpics.jl 	(Buckley-Leverett equation),
+        alltests.jl 	(Euler equations).
+
+The following list gives a short overview of the source files and their job:
+        - alltests.jl:
+                - Carries out all implemented tests for the Euler equations of gas dynamics
+        
+        - bases.jl:
+                - Allows to evaluate Legendre polynomials and their derivative.
+                - Produces mass and stiffness matrices for the reference element
+                - Allows to change between modal and nodal basis in the reference element.
+        
+        - bldg.jl:
+                - The implementation of the entropy rate corrected DG solver for the Buckley-Leverett equation
+        
+        - burgersdg.jl:
+                - The implementation of the entropy rate corrected DG solver for Burgers' equation
+        
+        - convana.jl:
+                - Carries out a convergence analysis for Eulers equation
+        
+        - DispMatGen.jl:
+                - Calculates the dissipation matrix G using a bisection algorithm
+                - Includes helper routines for the matrix Q defined in the publication
+        
+        - entrotest.jl:
+                - Tests the Euler equation solver for compatability with several entropy conditions
+                - Compatability with the classical per cell entropy inequality
+                - Dissipation speed of the total entropy in relation to the total entropy of a fine-grained Lax-Friedrichs scheme
+        
+        - eulerdg.jl:
+                - Implementation of the entropy rate corrected DG solver for the Euler equations. Includes the following functions:
+                        * EulerDG! 	: A basic DG scheme for the Euler equations. 
+                        * DispEstPE	: The dissipation estimate per edge
+			* EulerDDGpe!	: The entropy dissipation estimate corrected DG scheme for the Euler equations
+			* NTDGD		: the main driver routine for tests for the Euler system of conservation laws.
+ 			* PlotSol	: plots solutions given a grid, solution, time and component that should be plotted. 
+        - euler.jl:
+                - Implements the basic function needed to model the Euler equations, including:
+                        * continuous flux functions
+			* numerical flux functions
+			* entropy functions
+			* continuous entropy fluxes
+			* numerical entropy fluxes
+			* speed of sound and pressure calculation
+			* estimatation of wavespeeds
+			* conversion between physical and conserved quantities
+
+        - godsolve.jl:
+                - Implements a Godunov type solver for Burgers equation
+
+        - inpkg.jl:
+                - Install all needed packages
+
+        - jumppics.jl:
+                - Produces Figure 4 from the publication, underlining the problem of alliasing of disconinuities
+        
+        - lfsolver.jl:
+                - A Lax-Friedrichs solver for the Euler equations, used for reference solutions without a known exact solution
+
+	- mkBLpics.jl:
+		- produces all pictures for the Buckley-Leverett equations
+
+	- mkburgers.jl:
+		- produces all pictures for Burgers' equation
+
+	- mkntpics.jl:
+		- produces shock tube test pictures for the Euler equations
+        
+        - rsolver.jl:
+                - An exact Riemann solver for the Euler equations, used for reference solutions to shock-tubes. 
+         
+	- timestepana.jl:
+		- tests the maximal possible time-step for a Euler shock-tube.
+
+
+Please consult also the commented source code in the files.
+For experimentation with the Euler solver the function 
+
+        NTDGD(solver, K, T, u0; cfl, periodic=:false, hot=:false)
+
+is a good starting point. It has the following options:
+        solver: the used solver. EulerDGDpe! is the usual solver
+        K: Number of cells.
+        T: Endtime
+        u0: Initial condition in conserved variables, \R \to \R^3 
+        periodic: If periodic or constant boundary conditions should be used.
+        hot: If high order time integration using the Hairer, Wanner, Dorman, Prince method of order 8 should be used.
+
+Including the file "eulerdg.jl" should be sufficient for all Euler related experiments.
+It returns a grid and a solution, and these can be plotted using the function
+
+	PlotSol(g, sol, t, comp; ...)
+
+that plots the component <comp> of solution <sol> on grid <g> at time <t>. 
