@@ -1,0 +1,42 @@
+This folder contains a DG solver on unstructured triangular grids.
+A entropy dissipation mechanism based on positive integral operators is steered
+by an estimate of the maximal possible dissipation speed.
+Therefore, the entropy rate criterion is enforced in an approximate regime.
+A documentation of the possible make targets can be found in the Makefile.
+The only external library needed is HDF5 to export the solution.
+
+Compiling one of the possible make targets produces an executable for a particular testcase.
+If called it will produce two hdf5 files in the folder output/, one corresponding to the grid used.
+The second one holds the conserved variables at simulation end.
+
+If these two files are available corresponding python scripts produce figures for the
+publication in the folder figures/. 
+If the testfile needs a grid one can find these in the subfolder grids/.
+
+Included files:
+	- accdiag.py
+	- acctest.f90
+	- dpla.f90
+	- dsdtest.f90
+	- euler.f90
+	- euler.py
+	- ffs.py
+	- figures/
+	- grids/
+	- Gtest.f90
+	- latest.f90
+	- Makefile
+	- matrices.f90
+	- naca0012.py
+	- ops.f90
+	- opstest.f90
+	- param.f90
+	- quad.f90
+	- quadtest.f90
+	- sdgsol.f90
+	- sedov.py
+	- solimport.py
+	- testcases.f90
+	- tests.f90
+	- triang.f90
+	- udsdg.f90

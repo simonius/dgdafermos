@@ -2,4 +2,7 @@ This repository holds the sources for the numerical tests of the papers
 
 "Stabilizing Discontinuous Galerkin Methods Using Dafermos' Entropy Rate Criterion"
 
-Part I and II in the corresponding subfolders. Consult also the Readme in the respective subfolders
+Part I, II and III in the corresponding subfolders. 
+Part I and II were implemented in Julia.
+Part III is written in OpenMP parallelized FORTRAN. 
+Consult also the Readme in the respective subfolders
