@@ -1,23 +1,25 @@
 ! File contains the fluxes for the two-dimensional euler equations and the corresponding entropy fluxes
 module euler
+        use param
         implicit none
-        double precision :: gamma = 1.4D0
+        real(np) :: gamma = 1.4_np
+        logical, parameter :: kse = .true.     ! Switches to more complex speeds
         contains
 
         ! calculates pressure from conserved variables
         function p(u)
                 implicit none
-                double precision, dimension(4) :: u
-                double precision :: p
-                p = (gamma-1)*(u(4)-0.5*(u(2)**2 + u(3)**2)/u(1))
+                real(np) :: u(4)
+                real(np) :: p
+                p = (gamma-1.0_np)*(u(4)-0.5_np*(u(2)**2 + u(3)**2)/u(1))
         end function p
 
         ! derivative of the pressure from conserved variables
         function dp(u)
                 implicit none
-                double precision, dimension(4) :: u
-                double precision, dimension(4) :: dp
-                dp(1) = (gamma-1)*0.5*(u(2)**2 + u(3)**2)*u(1)**(-2.0)
+                real(np) :: u(4)
+                real(np) :: dp(4)
+                dp(1) = (gamma-1)*0.5_np*(u(2)**2 + u(3)**2)*u(1)**(-2.0_np)
                 dp(2) = -(gamma-1)*(u(2)/u(1))
                 dp(3) = -(gamma-1)*(u(3)/u(1))
                 dp(4) = (gamma-1)
@@ -26,8 +28,8 @@ module euler
         ! calculates speed of sound from conserved variables
         function a(u)
                 implicit none
-                double precision, dimension(4) :: u
-                double precision :: a
+                real(np) :: u(4)
+                real(np) :: a
                 a = sqrt(gamma*p(u)/ u(1))
         end function a
 
@@ -36,57 +38,83 @@ module euler
         ! in the HLL numerical flux.
         function anum(u)
                 implicit none
-                double precision, dimension(4) :: u
-                double precision :: anum
-                anum = sqrt(2*gamma*p(u)/ u(1))
+                real(np) :: u(4)
+                real(np) :: anum
+                anum = sqrt(gamma*p(u)/ u(1))
         end function anum
 
 
         ! speed of sound directly from pressure and density
         function apr(press, rho)
                 implicit none
-                double precision :: press, rho
-                double precision :: apr
+                real(np) :: press, rho
+                real(np) :: apr
                 apr = sqrt(gamma*press/rho)
         end function apr
 
         ! 'numerical' speed of sound directly from pressure and density
         function aprnum(press, rho)
                 implicit none
-                double precision :: press, rho
-                double precision :: aprnum
-                aprnum = sqrt(2*gamma*press/rho)
+                real(np) :: press, rho
+                real(np) :: aprnum
+                aprnum = sqrt(gamma*press/rho)
         end function aprnum
 
         ! Converts between physical and conserved variables
         function ConsVar(rho, vx, vy, p)
                 implicit none
-                double precision, dimension(4) :: ConsVar
-                double precision :: rho, vx, vy, p
+                real(np) :: ConsVar(4)
+                real(np) :: rho, vx, vy, p
                 ConsVar(1) = rho
                 ConsVar(2) = rho*vx
                 ConsVar(3) = rho*vy
-                ConsVar(4) = p / (gamma-1) + 0.5 * (vx**2 + vy**2)*rho
+                ConsVar(4) = p / (gamma-1.0_np) + 0.5_np * (vx**2 + vy**2)*rho
         end function ConsVar
 
         ! Converts from conserved variables to physical variables
         function PhysVar(rho, rhovx, rhovy, E)
                 implicit none
-                double precision, dimension(4) :: PhysVar
-                double precision :: rho, rhovx, rhovy, E
+                real(np) :: PhysVar(4)
+                real(np) :: rho, rhovx, rhovy, E
                 PhysVar(1) = rho
                 PhysVar(2) = rhovx/rho
                 PhysVar(3) = rhovy/rho
-                PhysVar(4) = (gamma-1)*(E - 0.5* (rhovx**2 + rhovy**2) / rho)
+                PhysVar(4) = (gamma-1.0_np)*(E - 0.5_np * (rhovx**2 + rhovy**2) / rho)
         end function PhysVar
 
+
+        ! The following function relates to Section 3.1.3 of
+        ! Toro: Riemann Solvers and Numericl Methods.
+        ! given right data it calculates the left states for a
+        ! shock moving with Mach number Ms
+        !       rhor: right density
+        !       vr: right speed
+        !       pr: right pressure
+        !       Ms: Mach number of the shock
+        ! returns u in conserved variables 
+        function Lvars(rhor, vr, pr, Ms) result (u)
+                real(np) :: rhor, vr, pr, Ms
+                real(np) :: u(4)
+                ! Aux
+                real(np) :: Mr, rhol, pl, vl, S
+                ! Calculate the right mach number
+                Mr = vr / sqrt(gamma*pr/rhor)
+                ! Calculate the Shock speed concerning the right sound speed
+                S = Ms * sqrt(gamma*pr/rhor)
+                rhol = rhor*(gamma + 1.0_np)*(Mr - Ms)**2 &
+                        / ((gamma - 1.0_np)*(Mr - Ms)**2 + 2.0_np)
+                pl = pr * (2.0_np * gamma*(Mr - Ms)**2 - gamma + 1.0_np) &
+                        / (gamma + 1.0_np)
+                vl = (1.0_np - rhor/rhol)*S + vr*rhor/rhol
+                u = ConsVar(rhol, vl, 0.0_np, pl)
+        end function Lvars
 
         ! calculates x component of the Euler flux
         function fEuler(u)
                 implicit none
-                double precision, dimension(4) :: u
-                double precision, dimension(4) :: fEuler
-                double precision :: pu
+                real(np) :: u(4)
+                real(np) :: fEuler(4)
+                real(np) :: pu
                 pu = p(u)
                 fEuler(1) = u(2)
                 fEuler(2) = u(2)**2/u(1) + pu
@@ -97,9 +125,9 @@ module euler
         ! calculates y component of Euler flux
         function gEuler(u)
                 implicit none
-                double precision, dimension(4) :: u
-                double precision, dimension(4) :: gEuler
-                double precision :: pu
+                real(np) :: u(4)
+                real(np) :: gEuler(4)
+                real(np) :: pu
                 pu = p(u)
                 gEuler(1) = u(3)
                 gEuler(2) = u(2)*u(3)/u(1)
@@ -109,27 +137,27 @@ module euler
 
         ! calculates Lax-Friedrichs flux in x
         function fEulerLF(ui, uo, n, lambda)
-                double precision, dimension(4) :: fEulerLF
-                double precision, dimension(4), intent(in) :: ui, uo
-                double precision, dimension(2), intent(in) :: n
-                double precision, intent(in) :: lambda
-                fEulerLF = (fEuler(ui) + fEuler(uo) + sign(1.0D0, n(1))*(ui - uo)/(2*lambda))/2
+                real(np) :: fEulerLF(4)
+                real(np), intent(in) :: ui(4), uo(4)
+                real(np), intent(in) :: n(2)
+                real(np), intent(in) :: lambda
+                fEulerLF = (fEuler(ui) + fEuler(uo) + sign(1.0_np, n(1))*(ui - uo)/(2.0_np*lambda))/2.0_np
         end function fEulerLF
 
         ! Lax-Friedrichs flux in y
         function gEulerLF(ui, uo, n, lambda)
-                double precision, dimension(4) :: gEulerLF
-                double precision, dimension(4), intent(in) :: ui, uo
-                double precision, dimension(2), intent(in) :: n
-                double precision, intent(in) :: lambda
-                gEulerLF = (gEuler(ui) + gEuler(uo) + sign(1.0D0, n(2))*(ui - uo)/(2*lambda))/2
+                real(np) :: gEulerLF(4)
+                real(np), intent(in) :: ui(4), uo(4)
+                real(np), intent(in) :: n(2)
+                real(np), intent(in) :: lambda
+                gEulerLF = (gEuler(ui) + gEuler(uo) + sign(1.0_np, n(2))*(ui - uo)/(2*lambda))/2.0_np
         end function gEulerLF
 
         ! calculates the maximum speed for the conection of two given states
         function cmax(ul, ur)
-                double precision, dimension(4) :: ul, ur
-                double precision :: cmax
-                double precision, dimension(2) :: vl, vr
+                real(np) :: ul(4), ur(4)
+                real(np) :: cmax
+                real(np) :: vl(2), vr(2)
                 vl = ul(2:3) / ul(1)
                 vr = ur(2:3) / ur(1)
                 cmax = max(norm2(vl), norm2(vr)) + max(anum(ul), anum(ur))
@@ -138,58 +166,76 @@ module euler
 
         ! Calcualtes local Lax-Friedrichs flux in x
         function fEulerLLF(ui, uo, n)
-                double precision, dimension(4) :: fEulerLLF
-                double precision, dimension(4), intent(in) :: ui, uo
-                double precision, dimension(2), intent(in) :: n
-                fEulerLLF = (fEuler(ui) + fEuler(uo) + 1.0D0*n(1)/norm2(n)*cmax(ui, uo)*(ui - uo))/2.0D0
+                real(np) :: fEulerLLF(4)
+                real(np), intent(in) :: ui(4), uo(4)
+                real(np), intent(in) :: n(2)
+                fEulerLLF = (fEuler(ui) + fEuler(uo) + 1.0_np*n(1)/norm2(n)*cmax(ui, uo)*(ui - uo))/2.0_np
         end function fEulerLLF
 
         ! local Lax-Friedrichs flux in y
         function gEulerLLF(ui, uo, n)
-                double precision, dimension(4) :: gEulerLLF
-                double precision, dimension(4), intent(in) :: ui, uo
-                double precision, dimension(2), intent(in) :: n
-                gEulerLLF = (gEuler(ui) + gEuler(uo) + 1.0D0*n(2)/norm2(n)*cmax(ui, uo)*(ui - uo))/2.0D0
+                real(np) :: gEulerLLF(4)
+                real(np), intent(in) :: ui(4), uo(4)
+                real(np), intent(in) :: n(2)
+                gEulerLLF = (gEuler(ui) + gEuler(uo) + 1.0_np*n(2)/norm2(n)*cmax(ui, uo)*(ui - uo))/2.0_np
         end function gEulerLLF
 
         ! Normal Lax-Friedrichs flux
         function EulerLLF(ui, uo, n)
-                double precision, dimension(4) :: EulerLLF
-                double precision, dimension(4) :: ui, uo
-                double precision, dimension(2) :: n
-                double precision, dimension(2) :: nn
+                real(np) :: EulerLLF(4)
+                real(np) :: ui(4), uo(4)
+                real(np) :: n(2)
+                real(np) :: nn(2)
                 nn = n / norm2(n)
-                EulerLLF = 0.5*(nn(1)*(fEuler(ui) + fEuler(uo)) + nn(2)*(gEuler(ui) + gEuler(uo)) &
+                EulerLLF = 0.5_np*(nn(1)*(fEuler(ui) + fEuler(uo)) + nn(2)*(gEuler(ui) + gEuler(uo)) &
                         + cmax(ui, uo)*(ui - uo))
         end function EulerLLF
 
         ! direct computation of the HLL flux
         function EulerHLLnf(ui, uo, n) result (EulerHLL)
                 implicit none
-                double precision, dimension(4) :: EulerHLL
-                double precision, dimension(4) :: ui, uo
-                double precision, dimension(2) :: n
+                real(np) :: EulerHLL(4)
+                real(np) :: ui(4), uo(4)
+                real(np) :: n(2)
                 ! Auxillaries
-                double precision, dimension(2) :: nn, no
-                double precision, dimension(4) :: fi, fo
-                double precision :: ai, ao, vi, vo, msi, mso
+                real(np) :: nn(2), no(2)
+                real(np) :: fi(4), fo(4)
+                real(np) :: ai, ao, vi, vo, msi, mso
+                real(np) :: anumb, pi, po, vii, vio, voi, voo
                 nn = n / norm2(n)
                 no(1) = -nn(2)
                 no(2) = nn(1)
 
+                anumb = aprnum(max(p(ui), p(uo)), min(ui(1), uo(1)))
+
                 fi = nn(1)*fEuler(ui) + nn(2)*gEuler(ui)
                 fo = nn(1)*fEuler(uo) + nn(2)*gEuler(uo)
-                vi = dot_product(nn, ui(2:3))/ui(1)
-                vo = dot_product(nn, uo(2:3))/uo(1)
                 msi = dot_product(no, ui(2:3)/ui(1))
                 mso = dot_product(no, uo(2:3)/uo(1))
 
-                ai = min(vi, vo) - max(anum(ui), anum(uo)) - abs(msi - mso)
-                ao = max(vi, vo) + max(anum(ui), anum(uo)) + abs(msi - mso)
+                if (kse) then
+                        pi = dot_product(nn, ui(2:3))
+                        po = dot_product(nn, uo(2:3))
+                        vii = pi / ui(1)
+                        vio = pi / uo(1)
+                        voi = po / ui(1)
+                        voo = po / uo(1)
 
-                if (0.0D0 < ai) then                                                            ! Supersonic from left
+                        ai = min(vii, vio, voi, voo) - anumb - 0.5_np*abs(msi - mso)
+                        ao = max(vii, vio, voi, voo) + anumb + 0.5_np*abs(msi - mso)
+
+                else
+                        vi = dot_product(nn, ui(2:3))/ui(1)
+                        vo = dot_product(nn, uo(2:3))/uo(1)
+
+                        ai = min(vi, vo) - max(anum(ui), anum(uo)) - 0.5_np*abs(msi - mso)
+                        ao = max(vi, vo) + max(anum(ui), anum(uo)) + 0.5_np*abs(msi - mso)
+                end if
+
+
+                if (0.0_np < ai) then                                                            ! Supersonic from left
                         EulerHLL = fi
-                elseif (0.0D0 < ao) then                                                        ! Transonic case
+                elseif (0.0_np < ao) then                                                        ! Transonic case
                         EulerHLL = (ao*fi - ai*fo + ai*ao*(uo - ui)) / (ao - ai)
                 else                                                                            ! Supersonic from the right
                         EulerHLL = fo
@@ -199,14 +245,14 @@ module euler
         ! Computation using the rotation onto the x direction
         function EulerHLLrot(ui, uo, n) result (EulerHLL)
                 implicit none
-                double precision, dimension(4) :: EulerHLL
-                double precision, dimension(4) :: ui, uo
-                double precision, dimension(2) :: n
+                real(np), dimension(4) :: EulerHLL(4)
+                real(np), dimension(4) :: ui(4), uo(4)
+                real(np), dimension(2) :: n(2)
                 ! Auxillaries
-                double precision, dimension(2) :: nn, vl, vr
-                double precision, dimension(4) :: fl, fr, ul, ur, um
-                double precision, dimension(2, 2) :: R, Ri
-                double precision :: al, ar
+                real(np), dimension(2) :: nn(2), vl(2), vr(2)
+                real(np), dimension(4) :: fl(4), fr(4), ul(4), ur, um
+                real(np), dimension(2, 2) :: R, Ri
+                real(np) :: al, ar
                 nn = n / norm2(n)
 
                 ! Rotation into the x direction
@@ -232,16 +278,16 @@ module euler
                 vl = ul(2:3)/ul(1)
                 vr = ur(2:3)/ur(1)
 
-                al = min(vl(1), vr(1)) - max(anum(ul), anum(ur)) - 0.1
-                ar = max(vl(1), vr(1)) + max(anum(ul), anum(ur)) + 0.1
+                al = min(vl(1), vr(1)) - max(anum(ul), anum(ur)) - 0.1_np
+                ar = max(vl(1), vr(1)) + max(anum(ul), anum(ur)) + 0.1_np
 
                 ! Calculate HLL intermediate state and slope
                 um = (-al*ul + ar*ur + fl - fr)/(ar-al)
 
                 ! Calculate the intercell flux
-                if (0.0D0 < al) then                                                            ! Supersonic from left
+                if (0.0_np < al) then                                                            ! Supersonic from left
                         EulerHLL = fl
-                elseif (0.0D0 < ar) then                                                        ! Transonic case
+                elseif (0.0_np < ar) then                                                        ! Transonic case
                         EulerHLL = (ar*fl - al*fr + al*ar*(ur - ul)) / (ar - al)
                 else                                                                            ! Supersonic from the right
                         EulerHLL = fr
@@ -255,86 +301,96 @@ module euler
         ! reflection at a hard wall is mimicked by reflecting the moment while
         ! keeping density and pressure (and therefore internal energy) as is
         function MirrorConsVar(u, n) result (ur)
-                double precision, dimension(4), intent(in) :: u 
-                double precision, dimension(2), intent(in) :: n
-                double precision, dimension(4) :: ur
+                real(np), intent(in) :: u(4)
+                real(np), intent(in) :: n(2)
+                real(np) :: ur(4)
                 ur(:) = u(:)
-                ur(2:3) = ur(2:3) - 2*n*dot_product(n, u(2:3))/dot_product(n, n)
+                ur(2:3) = ur(2:3) - 2.0_np*n*dot_product(n, u(2:3))/dot_product(n, n)
         end function MirrorConsVar
 
         ! The fluxes used at a reflecting wall - x direction
         function fEulerRefl(u, n)
-                double precision, dimension(4), intent(in) :: u
-                double precision, dimension(2), intent(in) :: n
-                double precision, dimension(4) :: fEulerRefl
+                real(np), intent(in) :: u(4)
+                real(np), intent(in) :: n(2)
+                real(np) :: fEulerRefl(4)
                 fEulerRefl = fEulerLLF(u, MirrorConsVar(u, n), n)
         end function fEulerRefl
 
         ! y direction
         function gEulerRefl(u, n)
-                double precision, dimension(4), intent(in) :: u
-                double precision, dimension(2), intent(in) :: n
-                double precision, dimension(4) :: gEulerRefl
+                real(np), intent(in) :: u(4)
+                real(np), intent(in) :: n(2)
+                real(np) :: gEulerRefl(4)
                 gEulerRefl = gEulerLLF(u, MirrorConsVar(u, n), n)
         end function gEulerRefl
 
         ! only normal flux, LLF style
         function EulerReflLLF(u, n)
-                double precision, dimension(4), intent(in) :: u
-                double precision, dimension(2), intent(in) :: n
-                double precision, dimension(4) :: EulerReflLLF
+                real(np), intent(in) :: u(4)
+                real(np), intent(in) :: n(2)
+                real(np) :: EulerReflLLF(4)
                 EulerReflLLF = EulerLLF(u, MirrorConsVar(u, n), n)
         end function EulerReflLLF
 
         ! only normal flux, HLL style
         function EulerReflHLL(u, n)
-                double precision, dimension(4), intent(in) :: u
-                double precision, dimension(2), intent(in) :: n
-                double precision, dimension(4) :: EulerReflHLL
+                real(np), intent(in) :: u(4)
+                real(np), intent(in) :: n(2)
+                real(np) :: EulerReflHLL(4)
                 EulerReflHLL = EulerHLLnf(u, MirrorConsVar(u, n), n)
         end function EulerReflHLL
 
+        function h(S)
+                real(np) :: S, h
+                h = (gamma + 1.0_np) / (gamma - 1.0_np) *exp(S / (gamma + 1.0_np))
+        end function h
 
-        ! Calculates Physical Entropy for the Euler System
+        function dh(S)
+                real(np) :: S, dh
+                dh = exp(S / (gamma + 1.0_np)) / (gamma - 1.0_np)
+        end function dh
+
+
+        ! Calculates the Physical Entropy for the Euler System
         function PUEuler(u)
                 implicit none
-                double precision, dimension(4), intent(in) :: u
-                double precision :: PUEuler
-                double precision :: S
+                real(np), intent(in) :: u(4)
+                real(np) :: PUEuler
+                real(np) :: S
                 S = log(p(u)*u(1)**(-gamma))
                 PUEuler = -u(1)*S
         end function PUEuler
 
-        ! Entropy variables
+        ! Entropy variables for the physical entropy
         function dPUEuler(u)
                 implicit none
-                double precision, dimension(4), intent(in) :: u
-                double precision, dimension(4) :: dPUEuler
-                double precision :: S
-                double precision, dimension(4) :: dS
+                real(np), intent(in) :: u(4)
+                real(np) :: dPUEuler(4)
+                real(np) :: S
+                real(np) :: dS(4)
                 S = log(p(u)*u(1)**(-gamma))
-                dS = 1.0D0/(p(u)*u(1)**(-gamma))*dp(u)*u(1)**(-gamma)
-                dS(1) = dS(1) + 1.0D0/(p(u)*u(1)**(-gamma))*p(u)*u(1)**(-gamma-1)*(-gamma)
+                dS = 1.0_np/(p(u)*u(1)**(-gamma))*dp(u)*u(1)**(-gamma)
+                dS(1) = dS(1) + 1.0_np/(p(u)*u(1)**(-gamma))*p(u)*u(1)**(-gamma-1)*(-gamma)
                 dPUEuler = -u(1)*dS
                 dPUeuler(1) = dPUeuler(1) - S
         end function dPUEUler
 
-        ! Calculates entropy flux in x direction for the physical entropy
+        ! Calculates physical entropy flux in x direction for the physical entropy
         function PFEuler(u)
                 implicit none
-                double precision, dimension(4), intent(in) :: u
-                double precision :: PFEuler
-                double precision :: S
+                real(np), intent(in) :: u(4)
+                real(np) :: PFEuler
+                real(np) :: S
                 S = log(p(u)*u(1)**(-gamma))
                 PFEuler = -u(2)*S
         end function PFEuler
 
-        ! Calculates Entropy flux in y direction for the physical entropy
+        ! Calculates Physical Entropy flux in y direction for the physical entropy
         function PGEuler(u)
                 implicit none
-                double precision, dimension(4), intent(in) :: u
-                double precision :: PGEuler
-                double precision :: S
+                real(np), intent(in) :: u(4)
+                real(np) :: PGEuler
+                real(np) :: S
                 S = log(p(u)*u(1)**(-gamma))
                 PGEuler = -u(3)*S
         end function PGEuler
@@ -342,58 +398,61 @@ module euler
         ! Lax-Friedrichs numerical entropy flux in x direction
         function PFEulerLF(ul, ur, lambda)
                 implicit none
-                double precision, dimension(4), intent(in) :: ul, ur
-                double precision, intent(in) :: lambda
-                double precision :: PFEulerLF
-                PFEulerLF = 0.5D0*(PFEuler(ul) + PFEuler(ur) - (PUEuler(ur)-PUEuler(ul))/(2*lambda))
+                real(np), intent(in) :: ul(4), ur(4)
+                real(np), intent(in) :: lambda
+                real(np) :: PFEulerLF
+                PFEulerLF = 0.5_np*(PFEuler(ul) + PFEuler(ur) - (PUEuler(ur)-PUEuler(ul))/(2.0_np*lambda))
         end function PFEulerLF
 
         ! Lax-Friedrichs numerical entropy flux in y direction
         function PGEulerLF(ub, ut, lambda)
                 implicit none
-                double precision, dimension(4), intent(in) :: ub, ut
-                double precision, intent(in) :: lambda
-                double precision :: PGEulerLF
-                PGEulerLF = 0.5D0*(PGEuler(ub) + PGEuler(ut) - (PUEuler(ut) - PUEuler(ub))/(2*lambda))
+                real(np), intent(in) :: ub(4), ut(4)
+                real(np), intent(in) :: lambda
+                real(np) :: PGEulerLF
+                PGEulerLF = 0.5_np*(PGEuler(ub) + PGEuler(ut) - (PUEuler(ut) - PUEuler(ub))/(2.0_np*lambda))
         end function PGEulerLF
 
         ! Local Lax-Friedrichs numerical enropy fluxes in x
          function PFEulerLLF(ui, uo, n)
-                double precision :: PFEulerLLF
-                double precision, dimension(4), intent(in) :: ui, uo
-                double precision, dimension(2), intent(in) :: n
-                PFEulerLLF = (PFEuler(ui) + PFEuler(uo) + 1.0*n(1)/norm2(n)*cmax(ui, uo)*(PUEuler(ui) - PUEuler(uo)))/2.0D0
+                real(np) :: PFEulerLLF
+                real(np), intent(in) :: ui(4), uo(4)
+                real(np), intent(in) :: n(2)
+                PFEulerLLF = (PFEuler(ui) + PFEuler(uo) + n(1)/norm2(n)*cmax(ui, uo)*(PUEuler(ui) - PUEuler(uo)))/2.0_np
         end function PFEulerLLF
 
         ! local Lax-Friedrichs flux in y
         function PGEulerLLF(ui, uo, n)
-                double precision :: PGEulerLLF
-                double precision, dimension(4), intent(in) :: ui, uo
-                double precision, dimension(2), intent(in) :: n
-                PGEulerLLF = (PGEuler(ui) + PGEuler(uo) + 1.0*n(2)/norm2(n)*cmax(ui, uo)*(PUEuler(ui) - PUEuler(uo)))/2.0D0
+                real(np) :: PGEulerLLF
+                real(np), intent(in) :: ui(4), uo(4)
+                real(np), intent(in) :: n(2)
+                PGEulerLLF = (PGEuler(ui) + PGEuler(uo) + n(2)/norm2(n)*cmax(ui, uo)*(PUEuler(ui) - PUEuler(uo)))/2.0_np
         end function PGEulerLLF
 
         ! Face sided LLF entropy flux
         function PEulerLLF(ui, uo, n)
-                double precision :: PEulerLLF
-                double precision, dimension(4), intent(in) :: ui, uo
-                double precision, dimension(2), intent(in) :: n
-                double precision, dimension(2) :: nn
+                real(np) :: PEulerLLF
+                real(np), intent(in) :: ui(4), uo(4)
+                real(np), intent(in) :: n(2)
+                real(np) :: nn(2)
                 nn = n / norm2(n)
-                PEulerLLF = 0.5D0*(nn(1)*(PFEuler(ui) + PFEuler(uo)) + nn(2)*(PGEuler(ui) + PGEuler(uo)) &
+                PEulerLLF = 0.5_np*(nn(1)*(PFEuler(ui) + PFEuler(uo)) + nn(2)*(PGEuler(ui) + PGEuler(uo)) &
                         + cmax(ui, uo)*(PUEuler(ui) - PUEuler(uo)))
         end function PEulerLLF
 
+        ! HLL entropy flux for the physical entropy
         function PEulerHLL(ui, uo, n)
                 implicit none
-                double precision :: PEulerHLL
-                double precision, dimension(4) :: ui, uo
-                double precision, dimension(2) :: n
+                real(np) :: PEulerHLL
+                real(np) :: ui(4), uo(4)
+                real(np) :: n(2)
                 ! Aux
-                double precision, dimension(2) :: nn, no
-                double precision, dimension(4) :: fi, fo, um
-                double precision :: ai, ao, vi, vo, pfi, pfo, fis, fos
-                double precision :: mso, msi
+                real(np) :: nn(2), no(2)
+                real(np) :: fi(4), fo(4), um(4)
+                real(np) :: ai, ao, vi, vo, pfi, pfo, fis, fos
+                real(np) :: mso, msi
+                real(np) :: anumb, pi, po, vii, vio, voi, voo
+                anumb = aprnum(max(p(ui), p(uo)), min(ui(1), uo(1)))
                 nn = n / norm2(n)
                 no(1) = -nn(2)
                 no(2) = nn(1)
@@ -402,49 +461,61 @@ module euler
                 pfi = nn(1)*PFEuler(ui) + nn(2)*PGEuler(ui)
                 fo = nn(1)*fEuler(uo) + nn(2)*gEuler(uo)
                 pfo = nn(1)*PFEuler(uo) + nn(2)*PGEuler(uo)
-                vi = dot_product(nn, ui(2:3))/ui(1)
-                vo = dot_product(nn, uo(2:3))/uo(1)
 
+                
                 msi = dot_product(no, ui(2:3))/ui(1)
                 mso = dot_product(no, uo(2:3))/uo(1)
 
-                ai = min(vi, vo) - max(anum(ui), anum(uo)) - abs(msi - mso)
-                ao = max(vi, vo) + max(anum(ui), anum(uo)) + abs(msi - mso)
+                if (kse) then
+                        pi = dot_product(nn, ui(2:3))
+                        po = dot_product(nn, uo(2:3))
+                        vii = pi / ui(1)
+                        vio = pi / uo(1)
+                        voi = po / ui(1)
+                        voo = po / uo(1)
 
+                        ai = min(vii, vio, voi, voo) - anumb - 0.5_np*abs(msi - mso)
+                        ao = max(vii, vio, voi, voo) + anumb + 0.5_np*abs(msi - mso)
+                else
+                        vi = dot_product(nn, ui(2:3))/ui(1)
+                        vo = dot_product(nn, uo(2:3))/uo(1)
+
+                        ai = min(vi, vo) - max(anum(ui), anum(uo)) - 0.5_np*abs(msi - mso)
+                        ao = max(vi, vo) + max(anum(ui), anum(uo)) + 0.5_np*abs(msi - mso)
+                end if
 
                 ! Calculate HLL intermediate state and slope
                 um = (-ai*ui + ao*uo + fi - fo)/(ao-ai)
 
                 ! Calculate the intercell flux
-                if (0.0D0 < ai) then                                                            ! Supersonic from left
+                if (0.0_np < ai) then                                                            ! Supersonic from left
                         PEulerHLL = pfi
-                elseif (0.0D0 < ao) then                                                        ! Transonic case
+                elseif (0.0_np < ao) then                                                        ! Transonic case
                         fis = pfi + ai*(PUEuler(um) - PUEuler(ui))
                         fos = pfo + ao*(PUEuler(um) - PUEuler(uo))
-                        PEulerHLL = 0.5*(fis + fos)
+                        PEulerHLL = 0.5_np*(fis + fos)
                 else                                                                            ! Supersonic from the right
                         PEulerHLL = pfo
                 end if
                 
         end function PEulerHLL
 
-
         ! An entropy inequality prediction using the one-dimensional theory
         function EulerDispOpLLF(ui, uo, n) result (sigma)
-                double precision, dimension(4), intent(in) :: ui, uo
-                double precision, dimension(2), intent(in) :: n
-                double precision :: sigma
+                real(np), intent(in) :: ui(4), uo(4)
+                real(np), intent(in) :: n(2)
+                real(np) :: sigma
                 
-                double precision :: cb
-                double precision, dimension(2) :: nn
-                double precision, dimension (4) :: fi, fo, um 
-                double precision :: Efi, Efo
+                real(np) :: cb
+                real(np) :: nn(2)
+                real(np) :: fi(4), fo(4), um(4) 
+                real(np) :: Efi, Efo
 
                 nn = n / norm2(n)
                 cb = cmax(ui, uo)
                 fi = nn(1)*fEuler(ui) + nn(2)*gEuler(ui)
                 fo = nn(1)*fEuler(uo) + nn(2)*gEuler(uo)
-                um = 0.5*(ui + uo) + (fi - fo) / (2*cb)
+                um = 0.5_np*(ui + uo) + (fi - fo) / (2*cb)
                 Efi = nn(1)*PFEuler(ui) + nn(2)*PGEuler(ui)
                 Efo = nn(1)*PFEuler(uo) + nn(2)*PGEuler(uo)
                 sigma = cb*(2*PUEuler(um) - PUEuler(ui) - PUEuler(uo)) - (Efi - Efo)
@@ -452,33 +523,47 @@ module euler
 
         ! An entropy inequality prediction using the one-dimensional theory
         function EulerDispOpHLL(ui, uo, n) result (sigma)
-                double precision, dimension(4), intent(in) :: ui, uo
-                double precision, dimension(2), intent(in) :: n
-                double precision :: sigma
+                real(np), intent(in) :: ui(4), uo(4)
+                real(np), intent(in) :: n(2)
+                real(np) :: sigma
                     ! Auxillaries
-                double precision, dimension(2) :: nn, no
-                double precision, dimension(4) :: fi, fo, um
-                double precision :: ai, ao, vi, vo, pfi, pfo
-                double precision :: msi, mso
+                real(np) :: nn(2), no(2)
+                real(np) :: fi(4), fo(4), um(4)
+                real(np) :: ai, ao, vi, vo, pfi, pfo
+                real(np) :: msi, mso
+                real(np) :: anumb, pi, po, vii, vio, voi, voo
                 nn = n / norm2(n)
                 no(1) = -nn(2)
                 no(2) = nn(1)
 
+                anumb = aprnum(max(p(ui), p(uo)), min(ui(1), uo(1)))
 
                 fi = nn(1)*fEuler(ui) + nn(2)*gEuler(ui)
                 pfi = nn(1)*PFEuler(ui) + nn(2)*PGEuler(ui)
                 fo = nn(1)*fEuler(uo) + nn(2)*gEuler(uo)
                 pfo = nn(1)*PFEuler(uo) + nn(2)*PGEuler(uo)
-                vi = dot_product(nn, ui(2:3))/ui(1)
-                vo = dot_product(nn, uo(2:3))/uo(1)
                 msi = dot_product(no, ui(2:3))/ui(1)
                 mso = dot_product(no, uo(2:3))/uo(1)
 
-                ai = min(vi, vo) - max(anum(ui), anum(uo)) - abs(msi - mso)
-                ao = max(vi, vo) + max(anum(ui), anum(uo)) + abs(msi - mso)
+                if (kse) then
+                        pi = dot_product(nn, ui(2:3))
+                        po = dot_product(nn, uo(2:3))
+                        vii = pi / ui(1)
+                        vio = pi / uo(1)
+                        voi = po / ui(1)
+                        voo = po / uo(1)
 
+                        ai = min(vii, vio, voi, voo) - anumb - 0.5_np*abs(msi - mso)
+                        ao = max(vii, vio, voi, voo) + anumb + 0.5_np*abs(msi - mso)
+                else
+                        vi = dot_product(nn, ui(2:3))/ui(1)
+                        vo = dot_product(nn, uo(2:3))/uo(1)
 
-                ! Calculate HLL intermediate state and slope
+                        ai = min(vi, vo) - max(anum(ui), anum(uo)) - 0.5_np*abs(msi - mso)
+                        ao = max(vi, vo) + max(anum(ui), anum(uo)) + 0.5_np*abs(msi - mso)
+                end if
+
+                ! Calculate HLL intermediate state
                 um = (-ai*ui + ao*uo + fi - fo)/(ao-ai)
 
                 sigma = (ao- ai)*PUEuler(um) + ai*PUEuler(ui) - ao*PUEuler(uo) - (pfi - pfo)

@@ -4,7 +4,7 @@
 ! a grid in the file format of Skewshuks Triangle program and solves the 
 ! Euler equations on it up to the given time tend. Afterwards it
 ! saves the grid and solution and exits.
-!       ./udsd nodefile elefile outputname tend 
+!       ./udsd nodefile elefile outputname ord tend 
 
 
 ! The boundary function for the free flow around the domain.
@@ -14,38 +14,40 @@
 ! t: time.
 subroutine FFbf(uo, u, x, t)
         use euler
-        double precision, intent(in) :: u(4)
-        double precision, intent(in) :: x(2)
-        double precision, intent(in) :: t
-        double precision, intent(out) :: uo(4)
-        double precision, parameter :: M = 2.0, alp = 1.25
-        double precision, parameter :: pie = 4*ATAN(1.0D0)
+        use param
+        real(np), intent(in) :: u(4)
+        real(np), intent(in) :: x(2)
+        real(np), intent(in) :: t
+        real(np), intent(out) :: uo(4)
+        real(np), parameter :: M = 0.8_np
+        real(np), parameter :: alp = 1.25_np
+        real(np), parameter :: pie = 4*ATAN(1.0_np)
 
         ! Value for stream with angle alp and mach number M        
-        uo = ConsVar(1.00D0, M*sqrt(1.4D0), M*sqrt(1.4D0)*sin(alp/360*2*pie), 1.0D0)
-        
-        ! Value for the forward facing step problem.
-        !uo = ConsVar(1.4D0, 3.0D0, 0.0D0, 1.0D0) 
+        uo = ConsVar(1.00_np, M*sqrt(1.4_np), M*sqrt(1.4_np)*sin(alp/180.0_np*pie), 1.0_np)
+         
 end subroutine FFbf
 
 program udsdg
         use sdgsolver
-        use triangles
+        use trianggrid
+        use trianghp
         use testcases
-        use ops
+        use opshp
+        use param
         implicit none
 
         type(Grid) :: gr
-        type(RefTriangle) :: rt
-        double precision, allocatable :: u0(:, :, :)
-        double precision, allocatable :: ures(:, :, :)
-        double precision :: tend, gs, cfl, fs
-        integer :: Nt
+        type(nprt) :: rt
+        real(np), allocatable :: u0(:, :, :)
+        real(np), allocatable :: ures(:, :, :)
+        real(np) :: tend, gs, cfl, fs
+        integer :: Nt, ord
         external :: FFbf
-        character(len=256) :: nfname, efname, ofname, tmaxstring
+        character(len=256) :: nfname, efname, ofname, ordstring, tmaxstring
 
-        if (command_argument_count() .NE. 4) then
-                write (*,*) "Missing input filenames!"
+        if (command_argument_count() .NE. 5) then
+                write (*,*) "wrong number of arguments!"
                 stop
         end if
 
@@ -53,12 +55,15 @@ program udsdg
         call get_command_argument(1, nfname)
         call get_command_argument(2, efname)
         call get_command_argument(3, ofname)
-        call get_command_argument(4, tmaxstring)
+        call get_command_argument(4, ordstring)
+        call get_command_argument(5, tmaxstring)
 
+        read (ordstring, *) ord
         read (tmaxstring, *) tend
-        
+       
+        cfl = 0.3_np/(dble(ord)**2 + dble(ord))
         ! Initialization of the reference triangle
-        call DGinit(rt)
+        call DGinit(rt, ord)
         
         ! Load the grid from the HDD 
         call GridTriangleImp(gr, nfname, efname)
@@ -73,8 +78,8 @@ program udsdg
         
         ! Determine the stiffness of the grid and an initial speed estimate.
         gs = FindStiff(gr)
-        fs = SpeedEstSplit(gr, rt, u0, FFbf, 0.0D0)
-        cfl = 0.1
+        fs = SpeedEstSplit(gr, rt, u0, FFbf, 0.0_np)
+        
         write (*,*) "System speed estimate is", fs, " Grid stiffness is", gs
         write (*,*) "using as CFL ", cfl
 

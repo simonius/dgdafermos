@@ -1,46 +1,53 @@
 ! This file carries out a shock tube style test for the stabilized DG scheme.
-! called as ./dsdgtest gridnodes gridtriangles savename tmax
+! called as 
+!       >> ./dsdgtest gridnodes gridtriangles savename ord tmax
 
 ! The corresponding boundary function for free flow
 subroutine FFbf(uo, u, x, t)
         use euler
-        double precision, intent(in) :: u(4)
-        double precision, intent(in) :: x(2)
-        double precision, intent(in) :: t
-        double precision, intent(out) :: uo(4)
-        uo = ConsVar(0.125D0, 0.0D0, 0.0D0, 0.1D0)
+        real(np), intent(in) :: u(4)
+        real(np), intent(in) :: x(2)
+        real(np), intent(in) :: t
+        real(np), intent(out) :: uo(4)
+        uo = ConsVar(0.125_np, 0.0_np, 0.0_np, 0.1_np)
 end subroutine FFbf
 
 
 program dgtest
         use sdgsolver   ! import needed components
-        use triangles
+        use trianggrid
+        use trianghp
         use testcases
-        use ops
+        use opshp
         implicit none
 
         type(Grid) :: gr
-        type(RefTriangle) :: rt
+        type(nprt) :: rt
+        integer :: ord
         external :: FFbf
-        double precision, allocatable :: u0(:, :, :)
-        double precision, allocatable :: ures(:, :, :)
-        double precision :: tend = 0.4, cfl = 0.1
-        character(len=256) :: nfname, efname, ofname, tmaxstring
+        real(np), allocatable :: u0(:, :, :)
+        real(np), allocatable :: ures(:, :, :)
+        real(np) :: tend = 0.4, cfl = 0.3
+        character(len=256) :: nfname, efname, ofname, tmaxstring, ordstring
 
         ! Parse filenames
-        if (command_argument_count() .NE. 4) then
-                write (*,*) "Missing input filenames!"
+        if (command_argument_count() .NE. 5) then
+                write (*,*) "Missing input arguments!"
                 stop
         end if
         call get_command_argument(1, nfname)
         call get_command_argument(2, efname)
         call get_command_argument(3, ofname)
-        call get_command_argument(4, tmaxstring)
+        call get_command_argument(4, ordstring) 
+        call get_command_argument(5, tmaxstring)
 
+        read (ordstring, *) ord
         read (tmaxstring, *) tend
+        cfl = cfl / (dble(ord)**2 + dble(ord))
+
 
         ! Initialize the reference triangle
-        call DGinit(rt)
+        call DGinit(rt, ord)
         ! Import the grid
         call GridTriangleImp(gr, nfname, efname)
         

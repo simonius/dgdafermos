@@ -5,6 +5,7 @@ import numpy as np
 import h5py
 import matplotlib.pyplot as plt
 import math
+from scipy.interpolate import griddata
 
 
 from euler import *
@@ -39,14 +40,14 @@ def SolImport(gfname, solfname):
     Ntr = Tset.shape[0]
     Ncp = CPset.shape[0]
     pts = np.zeros([Ntr*Ncp, 2])
+    PTpts = np.zeros([Ntr, Ncp, 2])
+
     rads = np.zeros([Ntr*Ncp])
     vals = np.zeros([Ntr*Ncp, 4])
     p = np.zeros([Ntr*Ncp])
-    Maz = np.zeros([Ntr*Ncp])
-    cb = np.zeros([Ntr*Ncp])
-
     print("Using ", Ntr, "triangles")
     print("File of nodal values has ", u.shape[0], " triangles")
+    print("We are using ", Ncp, "collocation points per triangle")
     for tr in range(Ntr):
         x1 = Pset[Tset[tr, 0], :]
         x2 = Pset[Tset[tr, 1], :]
@@ -56,6 +57,7 @@ def SolImport(gfname, solfname):
         ToLK[:, 1] = x3-x1
         for cp in range(Ncp):
             pts[cp + Ncp*tr, :] = Pset[Tset[tr, 0], :] + np.matmul(ToLK,CPset[cp, :])
+            PTpts[tr, cp, :] = Pset[Tset[tr, 0], :] + np.matmul(ToLK,CPset[cp, :])
             rads[cp + Ncp*tr] = np.linalg.norm(pts[cp + Ncp*tr, :])
             for k in range(4):
                 if np.isnan(u[tr, cp, k]):
@@ -63,9 +65,9 @@ def SolImport(gfname, solfname):
                 else:
                     vals[cp + Ncp*tr, k] = u[tr, cp, k]
             p[cp + Ncp*tr] = press(vals[cp + Ncp*tr, :])
-            Maz[cp + Ncp*tr] = Ma(vals[cp + Ncp*tr, :])
-            cb[cp + Ncp*tr] = cbound(vals[cp + Ncp*tr, :])
-    return Pset, Tset, pts, vals, p, Maz, cb
+
+
+    return Pset, Tset, pts, vals, p, PTpts, u
 
 # Plots a grid saved in Pset and Tset
 def PlotGrid(Pset, Tset):

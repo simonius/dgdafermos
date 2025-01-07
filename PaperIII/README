@@ -16,27 +16,34 @@ If the testfile needs a grid one can find these in the subfolder grids/.
 Included files:
 	- accdiag.py
 	- acctest.f90
-	- dpla.f90
+	- bf.f90
+        - csv.f90
+        - dgkhi.f90
+        - dgkhi.py
+        - dmr.f90
+        - dmr.py
 	- dsdtest.f90
 	- euler.f90
 	- euler.py
+        - ffs.f90
 	- ffs.py
 	- figures/
 	- grids/
-	- Gtest.f90
-	- latest.f90
 	- Makefile
-	- matrices.f90
 	- naca0012.py
-	- ops.f90
-	- opstest.f90
+	- opshp.f90
+	- ordcalc.f90
 	- param.f90
-	- quad.f90
-	- quadtest.f90
+        - qpla.f90
+	- quadshp.f90
+	- schlieren.f90
 	- sdgsol.f90
 	- sedov.py
 	- solimport.py
 	- testcases.f90
-	- tests.f90
-	- triang.f90
+	- trgrid.f90
+        - trianghp.f90
+        - triplts.f90
+        - twdrp.f90
+        - twdrp.py
 	- udsdg.f90

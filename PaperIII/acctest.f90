@@ -2,7 +2,7 @@
 ! that wanders from the left of the domain to the right.
 ! The resulting program is called as
 
-!       ./acctest grids/acc1.1.node grids/acc1.1.ele acc1 2.0
+!       ./acctest grids/acc1.1.node grids/acc1.1.ele acc1 ord 2.0
 
 ! to carry out the test on grid acc1, save the output with the
 ! keyword acc1 and solve up to t=2.0
@@ -10,44 +10,50 @@
 ! A boundary function for free-flow
 subroutine FFbf(uo, u, x, t)
         use euler
-        double precision, intent(in) :: u(4)
-        double precision, intent(in) :: x(2)
-        double precision, intent(in) :: t
-        double precision, intent(out) :: uo(4)
-        uo = ConsVar(1.0D0, 1.0D0, 0.0D0, 1.0D0)
+        real(np), intent(in) :: u(4)
+        real(np), intent(in) :: x(2)
+        real(np), intent(in) :: t
+        real(np), intent(out) :: uo(4)
+        uo = ConsVar(1.0_np, 1.0_np, 0.0_np, 1.0_np)
 end subroutine FFbf
 
 
 program acctest
         use sdgsolver           ! Include components needed
-        use triangles
+        use trianggrid
+        use trianghp
         use testcases
-        use ops
+        use opshp
         implicit none
 
         type(Grid) :: gr
-        type(RefTriangle) :: rt
+        type(nprt) :: rt
         external :: FFbf
-        double precision, allocatable :: u0(:, :, :)
-        double precision, allocatable :: ures(:, :, :)
-        double precision :: tend = 0.4, cfl = 0.03
-        double precision :: dnodes
-        character(len=256) :: nfname, efname, ofname, tmaxstring
+        real(np), allocatable :: u0(:, :, :)
+        real(np), allocatable :: ures(:, :, :)
+        real(np) :: tend = 0.1, cfl = 0.3
+        real(np) :: dnodes
+        integer :: ord
+        character(len=256) :: nfname, efname, ofname, ordstring, tmaxstring
 
         ! Parse filenames
-        if (command_argument_count() .NE. 4) then
-                write (*,*) "Missing input filenames!"
+        if (command_argument_count() .NE. 5) then
+                write (*,*) "wrong number of arguments!"
                 stop
         end if
         call get_command_argument(1, nfname)
         call get_command_argument(2, efname)
         call get_command_argument(3, ofname)
-        call get_command_argument(4, tmaxstring)
+        call get_command_argument(4, ordstring)
+        call get_command_argument(5, tmaxstring)
 
+        read (ordstring, *) ord
         read (tmaxstring, *) tend
 
+        cfl = cfl / (dble(ord)**2 + dble(ord))
+
         ! Initialize the reference triangle
-        call DGinit(rt)
+        call DGinit(rt, ord)
         
         ! Load the grid in the two filenames from memory
         call GridTriangleImp(gr, nfname, efname)

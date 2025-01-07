@@ -39,3 +39,21 @@ def cbound(u):
     except:
         va = 0.0
     return va
+
+def h1(S):
+        return S
+
+def h2(S):
+        gamma = 1.4
+        return (gamma+1)/(gamma-1)*math.exp(S / (gamma + 1))
+
+# the physical entropy
+def PUEuler(u):
+    gamma = 1.4
+    try:
+        p = press(u)
+        S = math.log(p * u[0]**(-gamma))
+    except:
+        print("Entropy plotting exception")
+        S = 0.0
+    return -u[0]*np.array([h1(S), h2(S)])
